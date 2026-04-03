@@ -18,9 +18,11 @@ export function HUD() {
         alignItems: 'center',
         pointerEvents: 'none',
         fontFamily: 'monospace',
-        color: '#e0e8ff',
+        color: '#a08ec0',
         fontSize: '14px',
         userSelect: 'none',
+        background: 'rgba(26,16,64,0.85)',
+        borderBottom: '1px solid #4755a0',
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -29,7 +31,7 @@ export function HUD() {
           style={{
             width: 160,
             height: 8,
-            background: '#222',
+            background: 'rgba(13,10,31,0.8)',
             borderRadius: 4,
             overflow: 'hidden',
           }}
@@ -38,7 +40,7 @@ export function HUD() {
             style={{
               width: `${hpPercent}%`,
               height: '100%',
-              background: hpPercent > 50 ? '#44dd88' : hpPercent > 20 ? '#ffaa22' : '#ff3333',
+              background: hpPercent > 30 ? '#4755a0' : '#f28c28',
               transition: 'width 0.2s ease',
             }}
           />
@@ -60,8 +62,8 @@ export function HUD() {
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-      <span style={{ opacity: 0.5, fontSize: 11 }}>{label}</span>
-      <span style={{ fontWeight: 'bold', fontSize: 18 }}>{value}</span>
+      <span style={{ opacity: 0.6, fontSize: 11 }}>{label}</span>
+      <span style={{ fontWeight: 'bold', fontSize: 18, color: 'white' }}>{value}</span>
     </div>
   );
 }

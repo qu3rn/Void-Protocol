@@ -1,95 +1,116 @@
-# CLAUDE.md
+# Project Overview
 
-## Project overview
+This project is a **2D side-scrolling platformer arena defense prototype** built for the web.
 
-This project is a **2D top-down tower defense / arena defense prototype** built for the web.
+## Core Gameplay Assumptions
 
-Core gameplay assumptions:
+- 2D side-scrolling platformer world  
+- Side camera with horizontal scroll  
+- Map-based combat on procedural platformer levels  
+- 1 playable class at MVP stage (Pirate)  
+- 3 enemy types (grunt, brute, speeder)  
+- 3 upgrade types dropped randomly by enemies  
+- Each enemy type can spawn as a boss variant after a defined kill threshold  
 
-* 2D generative world
-* top-down camera
-* map-based combat
-* 1 playable class at MVP stage
-* 3 enemy types
-* 3 upgrade types dropped randomly by enemies
-* each enemy type can spawn as a boss variant after a defined kill threshold
+The project should prioritize:
 
-The project should prioritize **fast iteration, modular architecture, and clean separation between gameplay logic, rendering, and UI**.
-
----
-
-## Recommended tech stack
-
-### Core stack
-
-* **TypeScript**
-* **Vite**
-* **PixiJS**
-* **React** for UI only
-* **Zustand** for lightweight global/meta state
-* **Vitest** for unit testing gameplay logic
-* **ESLint + Prettier**
-
-### Role of each tool
-
-* **PixiJS** handles rendering, scene updates, map drawing, enemies, towers, projectiles, drops, and effects.
-* **React** handles HUD, menus, overlays, settings, pause screen, upgrade selection, and debug panels.
-* **Gameplay logic must stay outside React**.
-* **Zustand** should manage UI state and lightweight meta-state, not frame-by-frame gameplay.
-* **Vitest** should cover deterministic logic such as spawning rules, drop logic, boss thresholds, and upgrade effects.
+- Fast iteration  
+- Modular architecture  
+- Clean separation between gameplay logic, rendering, and UI  
 
 ---
 
-## Architecture principles
+# Recommended Tech Stack
 
-### Separation of concerns
+## Core Stack
 
-* Keep **UI separate from gameplay logic**.
-* Keep **rendering separate from rules/systems**.
-* Prefer **data-driven configuration** over hardcoded behavior.
-* Build systems so they can scale beyond MVP without major refactors.
+- TypeScript  
+- Vite  
+- PixiJS  
+- React (UI only)  
+- Zustand  
+- Vitest  
+- ESLint + Prettier  
 
-### Recommended runtime split
+## Role of Each Tool
 
-1. **Game core**
+### PixiJS
 
-   * pure TypeScript
-   * entities, systems, rules, progression, spawning, upgrades, boss logic
-2. **Renderer**
+- Rendering  
+- Scene updates  
+- Map drawing  
+- Enemies, towers, projectiles, drops, effects  
 
-   * PixiJS scene graph and visuals
-3. **UI layer**
+### React
 
-   * React components for player-facing interface
+- HUD  
+- Menus  
+- Overlays  
+- Settings  
+- Pause screen  
+- Upgrade selection  
+- Debug panels  
 
-### Do not
+### Rules
 
-* Do not build gameplay state directly in React state.
-* Do not tightly couple Pixi rendering code with game rules.
-* Do not hardcode enemy, boss, or upgrade behavior directly inside scene code.
+- Gameplay logic must stay outside React  
+- Zustand is for UI/meta state only (NOT frame-by-frame simulation)  
+- Vitest should cover deterministic gameplay logic  
 
 ---
 
-## Recommended folder structure
+# Architecture Principles
 
-```txt
+## Separation of Concerns
+
+- UI separate from gameplay logic  
+- Rendering separate from rules/systems  
+- Prefer data-driven configuration  
+- Avoid hardcoded behavior  
+
+## Runtime Split
+
+### Game Core
+
+- Pure TypeScript  
+- Entities, systems, rules, progression  
+
+### Renderer
+
+- PixiJS scene graph  
+
+### UI
+
+- React components  
+
+## Do Not
+
+- ❌ Do not build gameplay state in React  
+- ❌ Do not mix Pixi rendering with logic  
+- ❌ Do not hardcode enemy or upgrade behavior in scenes  
+
+---
+
+# Folder Structure
+
 src/
   game/
     core/
-      entities/
-      systems/
+      entities/       ← Player, Enemy, Barrel, Pirate
+      systems/        ← PhysicsSystem, MovementSystem, CombatSystem, SkillSystem, InputHandler, EventBus, ProjectileSystem
       rules/
-      generators/
+      generators/     ← mapGenerator (procedural platformer)
+      utils/          ← vec2.ts
     renderer/
       pixi/
-      scenes/
-      sprites/
+      scenes/         ← GameScene
+      sprites/        ← PlayerSprite, EnemySprite, BarrelSprite, spriteSheetGenerator
     data/
       enemies/
       upgrades/
       towers/
       player/
-    utils/
+        pirate/       ← pirateConfig, pirateSkills
   ui/
     components/
     screens/
@@ -97,183 +118,267 @@ src/
   shared/
     types/
     constants/
-```
 
-### Folder responsibilities
+## Folder Responsibilities
 
-* `game/core` → gameplay rules and systems
-* `game/renderer` → Pixi-specific rendering
-* `game/data` → config for enemies, upgrades, towers, and player data
-* `ui` → React-based interface
-* `shared` → shared types and constants
-
----
-
-## Gameplay systems required for MVP
-
-### Player
-
-* 1 playable class
-* movement
-* basic combat interaction
-* health and core stats
-
-### Enemies
-
-* 3 enemy types
-* each enemy should define:
-
-  * hp
-  * speed
-  * damage
-  * reward value
-  * drop chance
-  * boss variant config
-
-### Boss system
-
-* bosses appear after killing a defined number of enemies
-* each enemy type can have a boss variant
-* boss spawning should be controlled by a dedicated system:
-
-  * kill counter
-  * threshold config
-  * spawn rule
-  * boss variant selection
-
-### Upgrades
-
-* 3 upgrade types
-* random drops from enemies
-* upgrades should be data-driven:
-
-  * id
-  * label
-  * effect type
-  * value
-  * rarity or drop weight
-
-### Map / world
-
-* top-down map
-* generative world or procedural field generation
-* should support enemy spawning, traversal, and combat readability
-
-### Defense layer
-
-For MVP, prefer **arena defense / hybrid defense** over a full classic tower defense grid.
-
-Recommended MVP approach:
-
-* player moves in a top-down space
-* enemies attack or pressure the defended zone
-* upgrades and structures can expand the defensive layer later
-
-This is faster to prototype and easier to validate than full pathfinding-heavy tower defense.
+- `game/core` → gameplay systems  
+- `game/renderer` → Pixi rendering  
+- `game/data` → configs  
+- `ui` → React interface  
+- `shared` → shared types/constants  
 
 ---
 
-## Why this stack fits the project
+# Gameplay Systems (MVP)
 
-### PixiJS
+## Player
 
-Use PixiJS because it is a strong fit for:
+- Acceleration-based horizontal movement + variable-hold jump  
+- Combat interaction via SkillSystem (3 slots)  
+- Health, knockback, hurt timer  
+- Subclassed per hero (Pirate extends Player)  
 
-* 2D rendering
-* top-down gameplay
-* maps, waves, enemies, projectiles, and effects
-* better control over rendering than DOM-based approaches
+## Enemies
 
-### React
+Each enemy defines:
 
-Use React only where React is strong:
+- HP  
+- Speed  
+- Damage  
+- Reward value  
+- Drop chance  
+- Boss variant config  
 
-* HUD
-* menus
-* overlays
-* upgrade picker
-* settings/debug views
+## Boss System
 
-### TypeScript
+- Triggered after kill threshold  
+- Each enemy type has a boss variant  
+- Controlled by:
+  - Kill counter  
+  - Threshold  
+  - Spawn logic  
 
-Use TypeScript everywhere for:
+## Upgrades
 
-* safer entity/system contracts
-* scalable data definitions
-* more maintainable gameplay code
+- 3 types  
+- Random drops  
+- Data-driven:
+  - id  
+  - label  
+  - effect  
+  - value  
+  - rarity  
 
-### Zustand
+## Map / World
 
-Use Zustand for:
+- Side-scrolling platformer, 2.5× screen width  
+- Procedural generation (floating platforms, ground layer)  
+- AABB tile collision via PhysicsSystem  
+- 16×16 tiles, rendered via spriteSheetGenerator  
 
-* UI visibility
-* game session metadata
-* upgrade selection modal state
-* pause/debug toggles
+## Defense Layer
 
-Do not use it for high-frequency per-frame entity simulation.
+Use **arena defense (hybrid)** for MVP:
 
----
-
-## Testing guidance
-
-Use **Vitest** for unit tests around deterministic systems:
-
-* enemy spawn rules
-* boss threshold logic
-* drop logic
-* upgrade application
-* numeric calculations and balancing helpers
-
-Avoid over-testing renderer internals.
-Test logic, not frame-by-frame visuals.
-
----
-
-## Delivery priorities
-
-### MVP priorities
-
-1. core loop working
-2. procedural or generative map/field
-3. one playable character
-4. three enemy types
-5. upgrade drops
-6. boss threshold system
-7. minimal HUD and progression feedback
-
-### Later priorities
-
-* more classes
-* more enemy archetypes
-* structures or tower placement
-* advanced pathing
-* visual effects and polish
-* save/progression systems
+- Player moves freely across platformer level  
+- Enemies chase or patrol  
+- Expand later into towers  
 
 ---
 
-## Final recommendation
+# Visual Style & Color Palette
 
-Build the project with:
+Use the **60–30–10 rule**:
 
-* **TypeScript**
-* **Vite**
-* **PixiJS**
-* **React for UI**
-* **Zustand**
-* **Vitest**
+- 60% → deep blue / violet (#281C50, #4755A0)  
+- 30% → neutral / lighter tones  
+- 10% → orange accent (#F28C28)  
 
-And organize it around:
+Style:
 
-* gameplay in pure TypeScript
-* rendering in PixiJS
-* interface in React
+- Cute high-tech fantasy  
+- Neon / cyberpunk feel  
 
-This gives the best balance of:
+---
 
-* rapid iteration
-* clean architecture
-* web delivery
-* portfolio value
-* room for future expansion
+# Sprite Sheets & Animations
+
+All sprites are **programmatic pixel art** generated via Canvas API in `spriteSheetGenerator.ts`. 16×16px per frame.
+
+## Player
+
+- Idle: 4 frames  
+- Walk: 6 frames  
+- Attack: 4 frames  
+- Hurt: 2 frames  
+
+## Enemies (grunt, brute, speeder)
+
+- Idle: 4 frames  
+- Walk: 4–6 frames  
+- Hurt: 2 frames  
+- Boss = modified version  
+
+## Effects
+
+- Melee arc (orange, setTimeout cleanup)  
+- Double-blink red on hurt  
+- Explosion ring (animated grow + fade)  
+
+## Tiles
+
+- 16×16  
+- Types: solid, solidTop, solidLeft, solidRight, platform, bg  
+- Seamless  
+
+---
+
+# UI
+
+## HUD
+- health bar 
+- experience bar with small level digit above it
+- gameplay time on middle of the screen
+- corner boss image and wave progess 2 digits
+
+---
+
+# Movement and Interaction System
+
+## Core Principle
+
+Everything is based on:
+
+- Velocity  
+- Acceleration  
+- Impulses  
+
+Never directly manipulate position outside physics.
+
+---
+
+## Movement Physics
+
+- Acceleration-based horizontal (groundAccel=0.7, airAccel=0.35)  
+- Drag per frame (0.84)  
+- Gravity: 0.45/frame, maxFall: 13  
+- Jump velocity: -9.5, variable hold up to 12 frames  
+- `MovementSystem.ts` — config-driven, shared by player + enemies  
+
+---
+
+## Combat
+
+- AABB melee hit detection (`CombatSystem.ts`)  
+- Impulse knockback, friction decay  
+- Contact damage with 800ms cooldown  
+- Double-blink red hurt feedback  
+
+---
+
+## Skills System
+
+- 3 active skill slots (`SkillSystem.ts`)  
+- `SkillDef<T>` — typed result, cooldown, trigger, execute  
+- `SkillContext` + `SkillMutator` passed at runtime  
+- Results returned to GameScene for entity spawning  
+
+---
+
+## Input
+
+- `InputHandler.ts` — just-pressed vs held, `flush()` end of frame  
+- A/D = move · Space/W/↑ = jump · Z = attack · X = skill1 · C = skill2  
+
+---
+
+## EventBus
+
+- Synchronous pub/sub (`EventBus.ts`)  
+- `GameEvent` discriminated union  
+- Used for: `projectile_hit_barrel` → `barrel_explode` chain  
+
+---
+
+# Game details
+
+## Heroes
+
+- Pirate (`Pirate.ts` extends `Player`)
+
+## Pirate Skills
+
+| Slot | Key | Skill | Cooldown |
+|------|-----|-------|----------|
+| 0 | Z | Cutlass Slash | 400ms |
+| 1 | X | Powder Barrel | 4000ms |
+| 2 | C | Cannon Shot | 1200ms |
+
+## Pirate Skills Behavior
+
+- **Cutlass Slash** — wide arc melee, returns `MeleeResult` hitbox  
+- **Powder Barrel** — deploy slow-zone barrel ahead; explodes on cannon hit; damages nearby enemies  
+- **Cannon Shot** — fires cannonball projectile; detonates barrels on contact  
+
+---
+
+# Testing Guidance
+
+Use Vitest for:
+
+- Spawn rules  
+- Boss logic  
+- Drops  
+- Upgrades  
+- Math systems  
+
+Avoid testing rendering.
+
+---
+
+# Delivery Priorities
+
+## MVP
+
+1. Core loop  
+2. Procedural map  
+3. Player  
+4. Enemies  
+5. Upgrades  
+6. Boss system  
+7. HUD  
+
+## Later
+
+- More classes  
+- More enemies  
+- Towers  
+- Pathfinding  
+- Visual polish  
+- Progression  
+
+---
+
+# Final Recommendation
+
+## Stack
+
+- TypeScript  
+- Vite  
+- PixiJS  
+- React  
+- Zustand  
+- Vitest  
+
+## Architecture
+
+- Gameplay → TypeScript core  
+- Rendering → PixiJS  
+- UI → React  
+
+## Goal
+
+- Fast iteration  
+- Clean structure  
+- Scalable systems  
+- Strong portfolio-quality project  

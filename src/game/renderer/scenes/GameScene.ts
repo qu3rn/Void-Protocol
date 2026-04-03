@@ -1,82 +1,440 @@
-import { Container, Graphics } from 'pixi.js';
-import type { Application } from 'pixi.js';
-import { Player } from '@game/core/entities/Player';
-import { Enemy } from '@game/core/entities/Enemy';
+import { Container, Graphics, Sprite } from 'pixi.js';
+import type { Application, Texture } from 'pixi.js';
+import { Pirate } from '@game/core/entities/Pirate';
+import { Enemy, getEnemyMass } from '@game/core/entities/Enemy';
+import { Barrel } from '@game/core/entities/Barrel';
 import { generateMap } from '@game/core/generators/mapGenerator';
-import { createPlayerSprite, syncPlayerSprite } from '@game/renderer/sprites/PlayerSprite';
-import { createEnemySprite, syncEnemySprite } from '@game/renderer/sprites/EnemySprite';
-import { TILE_SIZE } from '@shared/constants';
+import type { MapData } from '@game/core/generators/mapGenerator';
+import { PlayerAnimSprite } from '@game/renderer/sprites/PlayerSprite';
+import { EnemyAnimSprite } from '@game/renderer/sprites/EnemySprite';
+import { BarrelSprite, makeCannonballGfx } from '@game/renderer/sprites/BarrelSprite';
+import { buildMapTextures } from '@game/renderer/sprites/spriteSheetGenerator';
+import { resolveAndMove, tileBelow } from '@game/core/systems/PhysicsSystem';
+import { InputHandler } from '@game/core/systems/InputHandler';
+import { isInMeleeRange, applyHit } from '@game/core/systems/CombatSystem';
+import { EventBus } from '@game/core/systems/EventBus';
+import { ProjectileSystem, createProjectile, CANNON_SHOT_CONFIG } from '@game/core/systems/ProjectileSystem';
+import { TILE_SIZE, GAME_WIDTH, PLAYER_BODY_W, PLAYER_BODY_H } from '@shared/constants';
 import { useGameStore } from '@store/useGameStore';
-import type { EnemyType } from '@shared/types';
+import type { EnemyType, ProjectileState } from '@shared/types';
+
+const ENEMY_BODY: Record<EnemyType, { w: number; h: number }> = {
+  grunt  : { w: 14, h: 24 },
+  brute  : { w: 18, h: 28 },
+  speeder: { w: 10, h: 24 },
+};
+
+const SAME_LEVEL_THRESHOLD = TILE_SIZE * 2;
+const CONTACT_DAMAGE_COOLDOWN = 800; // ms between contact-damage ticks
+const PLAYER_MASS = 1.0;
+
+/** Flash a sprite 2× red for the double-blink hurt effect. */
+function doubleBlink(sprite: { tint: number }, durationMs: number): void {
+  const original = sprite.tint;
+  let phase = 0;
+  const step = () => {
+    phase++;
+    sprite.tint = phase % 2 === 1 ? 0xff2222 : original;
+    if (phase < 4) setTimeout(step, durationMs / 4);
+    else sprite.tint = original;
+  };
+  step();
+}
 
 export class GameScene {
-  private container: Container;
-  private player: Player;
-  private enemies: Map<string, { entity: Enemy; sprite: Graphics }> = new Map();
-  private playerSprite: Graphics;
+  private world       : Container;
+  private player      : Pirate;
+  private playerAnim  : PlayerAnimSprite;
+  private enemies     : Map<string, { entity: Enemy; anim: EnemyAnimSprite }> = new Map();
+  private barrels     : Map<string, { entity: Barrel; sprite: BarrelSprite }> = new Map();
+  private projectiles : Map<string, { state: ProjectileState; gfx: Graphics }> = new Map();
+  private map         : MapData;
+  private input       : InputHandler;
+  private eventBus    : EventBus;
+  private projSystem  : ProjectileSystem;
+  private cameraX     = 0;
+  private lastContactDamage = 0;
 
   constructor(app: Application) {
-    this.container = new Container();
-    app.stage.addChild(this.container);
+    this.world = new Container();
+    app.stage.addChild(this.world);
 
+    this.map = generateMap();
     this.renderMap();
 
-    this.player = new Player();
-    this.playerSprite = createPlayerSprite(this.player);
-    this.container.addChild(this.playerSprite);
+    // ── EventBus + systems ──────────────────────────────────────────────────
+    this.eventBus   = new EventBus();
+    this.projSystem = new ProjectileSystem(this.eventBus);
 
-    this.spawnInitialEnemies();
+    // Barrel detonation chain: projectile hit → explode → AoE
+    this.eventBus.on('projectile_hit_barrel', (e) => {
+      const barrel = this.barrels.get(e.barrelId);
+      if (!barrel || !barrel.entity.isAlive) return;
+      barrel.entity.explode();
+      this.eventBus.emit({
+        type    : 'barrel_explode',
+        barrelId: e.barrelId,
+        position: { ...barrel.entity.state.position },
+      });
+    });
+
+    this.eventBus.on('barrel_explode', (e) => {
+      const barrel = this.barrels.get(e.barrelId);
+      if (!barrel) return;
+      const bs     = barrel.entity.state;
+      for (const { entity, anim } of this.enemies.values()) {
+        if (!entity.isAlive) continue;
+        if (barrel.entity.isInBlastRadius(entity.state.position)) {
+          entity.state.hp       = Math.max(0, entity.state.hp - bs.explodeDamage);
+          entity.state.hurtTimer = 400;
+          doubleBlink(anim.sprite, 400);
+        }
+      }
+      // Visual burst
+      this._showExplodeFx(e.position.x, e.position.y, bs.explodeRadius);
+    });
+
+    const groundY = (this.map.heightTiles - 2) * TILE_SIZE;
+    this.player   = new Pirate();
+    this.player.state.position.x = TILE_SIZE * 3 + PLAYER_BODY_W / 2;
+    this.player.state.position.y = groundY;
+
+    this.playerAnim = new PlayerAnimSprite();
+    this.world.addChild(this.playerAnim.sprite);
+
+    this.spawnEnemies();
+    this.input = new InputHandler();
 
     app.ticker.add(() => this.update());
   }
 
-  private renderMap(): void {
-    const map = generateMap();
-    const mapContainer = new Container();
+  // ── Update loop ────────────────────────────────────────────────────────────
 
-    for (let row = 0; row < map.heightTiles; row++) {
-      for (let col = 0; col < map.widthTiles; col++) {
-        const tile = map.tiles[row][col];
-        const g = new Graphics();
-        const color = tile === 1 ? 0x223344 : 0x111118;
-        g.rect(col * TILE_SIZE, row * TILE_SIZE, TILE_SIZE, TILE_SIZE).fill({ color });
-        mapContainer.addChild(g);
+  private update(): void {
+    const now   = Date.now();
+    const input = this.input.snapshot();
+
+    // ── Player: input + physics ──────────────────────────────────────────────
+    const ps = this.player.state;
+
+    this.player.processInput(input, now);
+
+    // Consume pirate skill spawn requests
+    if (this.player.pendingBarrel) {
+      this._spawnBarrel(this.player.pendingBarrel.spawnPosition);
+      this.player.pendingBarrel = null;
+    }
+    if (this.player.pendingShot) {
+      const shot = this.player.pendingShot;
+      const proj = createProjectile(shot.spawnPosition, shot.angle, 'player', CANNON_SHOT_CONFIG);
+      this.projSystem.spawn(proj, CANNON_SHOT_CONFIG.radius);
+      const gfx = makeCannonballGfx();
+      this.world.addChild(gfx);
+      this.projectiles.set(proj.id, { state: proj, gfx });
+      this.player.pendingShot = null;
+    }
+    this.player.applyPhysics(input.jumpHeld);
+
+    const pbody = {
+      x: ps.position.x, y: ps.position.y,
+      vx: ps.velocityX,  vy: ps.velocityY,
+      width: PLAYER_BODY_W, height: PLAYER_BODY_H,
+      isOnGround: ps.isOnGround,
+    };
+    resolveAndMove(pbody, this.map);
+    ps.position.x = pbody.x; ps.position.y = pbody.y;
+    ps.velocityX  = pbody.vx; ps.velocityY  = pbody.vy;
+    ps.isOnGround = pbody.isOnGround;
+
+    // ── Attack: melee bash ───────────────────────────────────────────────────
+    if (input.attack) {
+      const bash = this.player.tryBash(now);
+      if (bash) {
+        const atk = {
+          origin    : ps.position,
+          facing    : ps.facingRight ? 1 : -1,
+          halfW     : bash.halfW,
+          halfH     : bash.halfH,
+          offsetX   : Math.abs(bash.hitBoxCX - ps.position.x),
+          damage    : ps.damage,
+          knockbackX: 5.5,
+          knockbackY: 3.5,
+        };
+        for (const { entity, anim } of this.enemies.values()) {
+          if (!entity.isAlive) continue;
+          const es      = entity.state;
+          const centre  = { x: es.position.x, y: es.position.y - ENEMY_BODY[es.type].h / 2 };
+          if (isInMeleeRange(centre, atk)) {
+            const target = {
+              position : es.position,
+              velocityX: es.velocityX,
+              velocityY: es.velocityY,
+              hp       : es.hp,
+              maxHp    : es.maxHp,
+              hurtTimer: es.hurtTimer,
+              mass     : getEnemyMass(es.type),
+            };
+            applyHit(ps.position, target, atk);
+            es.velocityX = target.velocityX;
+            es.velocityY = target.velocityY;
+            es.hp        = target.hp;
+            es.hurtTimer = target.hurtTimer;
+            doubleBlink(anim.sprite, 400);
+          }
+        }
+        this.showSlashFx(bash.hitBoxCX, bash.hitBoxCY, bash.halfW);
       }
     }
 
-    this.container.addChild(mapContainer);
-  }
+    this.player.updateAnimState(now);
+    this.playerAnim.sync(this.player);
 
-  private spawnInitialEnemies(): void {
-    const spawnData: Array<{ type: EnemyType; x: number; y: number }> = [
-      { type: 'grunt', x: 200, y: 150 },
-      { type: 'brute', x: 1000, y: 200 },
-      { type: 'speeder', x: 600, y: 500 },
-    ];
-
-    for (const spawn of spawnData) {
-      const enemy = new Enemy(spawn.type);
-      enemy.state.position = { x: spawn.x, y: spawn.y };
-      const sprite = createEnemySprite(enemy);
-      this.container.addChild(sprite);
-      this.enemies.set(enemy.state.id, { entity: enemy, sprite });
-    }
-  }
-
-  private update(): void {
-    const { position } = this.player.state;
-
-    for (const [id, { entity, sprite }] of this.enemies) {
+    // ── Enemies ──────────────────────────────────────────────────────────────
+    for (const [id, { entity, anim }] of this.enemies) {
       if (!entity.isAlive) {
-        sprite.destroy();
+        anim.sprite.destroy();
         this.enemies.delete(id);
         useGameStore.getState().incrementKill(entity.state.reward);
         continue;
       }
-      entity.moveTo(position.x, position.y);
-      syncEnemySprite(sprite, entity);
+
+      const es   = entity.state;
+      const body = ENEMY_BODY[es.type];
+
+      entity.applyPhysics();
+
+      // AI: chase on same level, patrol otherwise
+      const sameLevel = Math.abs(es.position.y - ps.position.y) < SAME_LEVEL_THRESHOLD;
+      if (sameLevel) {
+        entity.chaseX(ps.position.x);
+      } else {
+        const lookX = es.position.x + es.patrolDir * (body.w / 2 + 4);
+        if (!tileBelow(this.map, lookX, es.position.y)) entity.reversePatrol();
+        entity.patrol();
+      }
+
+      const ebdy = {
+        x: es.position.x, y: es.position.y,
+        vx: es.velocityX,  vy: es.velocityY,
+        width: body.w,     height: body.h,
+        isOnGround: es.isOnGround,
+      };
+      resolveAndMove(ebdy, this.map);
+      es.position.x = ebdy.x; es.position.y = ebdy.y;
+      es.velocityX  = ebdy.vx; es.velocityY  = ebdy.vy;
+      es.isOnGround = ebdy.isOnGround;
+
+      // Contact damage to player (with cooldown to prevent spam)
+      const cdx = Math.abs(es.position.x - ps.position.x);
+      const cdy = Math.abs(es.position.y - ps.position.y);
+      if (cdx < 20 && cdy < 30 && now - this.lastContactDamage > CONTACT_DAMAGE_COOLDOWN) {
+        this.lastContactDamage = now;
+        const knockAtk = {
+          origin    : es.position,
+          facing    : es.facingRight ? 1 : -1,
+          halfW     : 16,
+          halfH     : 28,
+          offsetX   : 0,
+          damage    : es.damage,
+          knockbackX: 4.0,
+          knockbackY: 2.5,
+        };
+        const playerTarget = {
+          position : ps.position,
+          velocityX: ps.velocityX,
+          velocityY: ps.velocityY,
+          hp       : ps.hp,
+          maxHp    : ps.maxHp,
+          hurtTimer: ps.hurtTimer,
+          mass     : PLAYER_MASS,
+        };
+        applyHit(es.position, playerTarget, knockAtk);
+        ps.velocityX = playerTarget.velocityX;
+        ps.velocityY = playerTarget.velocityY;
+        ps.hp        = playerTarget.hp;
+        ps.hurtTimer = playerTarget.hurtTimer;
+        doubleBlink(this.playerAnim.sprite, 400);
+      }
+
+      entity.updateAnimState();
+      anim.sync(entity);
     }
 
-    syncPlayerSprite(this.playerSprite, this.player);
+    // ── Barrel slow aura ──────────────────────────────────────────────────────
+    const deltaMs = 16; // approximate 60fps frame time
+    for (const [bid, { entity: barrel, sprite: bSprite }] of this.barrels) {
+      if (!barrel.tick(deltaMs)) {
+        bSprite.gfx.destroy();
+        this.barrels.delete(bid);
+        continue;
+      }
+      bSprite.sync(barrel);
+      // Apply slow to enemies inside aura (override their velocity this frame)
+      for (const { entity } of this.enemies.values()) {
+        if (barrel.isInSlowRange(entity.state.position)) {
+          entity.state.velocityX *= barrel.state.slowMult;
+        }
+      }
+    }
+
+    // ── Projectile update ────────────────────────────────────────────────────
+    const aliveBarrels = [...this.barrels.values()].map((b) => b.entity);
+    const hitResults: Array<{ projectileId: string; enemyId: string; damage: number }> = [];
+    this.projSystem.update(deltaMs, this._buildCollidableEnemies(), aliveBarrels, hitResults);
+
+    // Apply projectile → enemy hits
+    for (const hit of hitResults) {
+      const enemy = this.enemies.get(hit.enemyId);
+      if (!enemy || !enemy.entity.isAlive) continue;
+      enemy.entity.state.hp       = Math.max(0, enemy.entity.state.hp - hit.damage);
+      enemy.entity.state.hurtTimer = 400;
+      doubleBlink(enemy.anim.sprite, 400);
+    }
+
+    // Sync/remove projectile visuals
+    for (const [pid, { state, gfx }] of this.projectiles) {
+      if (state.spent || state.lifetime <= 0) {
+        gfx.destroy();
+        this.projectiles.delete(pid);
+      } else {
+        gfx.x = state.position.x;
+        gfx.y = state.position.y;
+      }
+    }
+
+    // ── Camera ────────────────────────────────────────────────────────────────
+    const mapPx = this.map.widthTiles * TILE_SIZE;
+    this.cameraX   = Math.max(0, Math.min(ps.position.x - GAME_WIDTH / 2, mapPx - GAME_WIDTH));
+    this.world.x   = -this.cameraX;
+
+    // ── HUD ───────────────────────────────────────────────────────────────────
+    useGameStore.getState().setPlayerHealth(ps.hp);
+
+    this.input.flush();
+  }
+
+  // ── Slash FX ──────────────────────────────────────────────────────────────
+
+  private showSlashFx(cx: number, cy: number, halfW: number): void {
+    const dir  = this.player.state.facingRight ? 1 : -1;
+    const arc  = new Graphics();
+    const sa   = dir > 0 ? -Math.PI * 0.6 : Math.PI * 0.4;
+    const ea   = dir > 0 ?  Math.PI * 0.1  : Math.PI * 1.6;
+    arc.arc(cx, cy, halfW, sa, ea);
+    arc.stroke({ color: 0xff9a3c, width: 3 });
+    this.world.addChild(arc);
+    setTimeout(() => arc.destroy(), 180);
+  }
+
+  // ── Barrel spawn ──────────────────────────────────────────────────────────
+
+  private _spawnBarrel(pos: { x: number; y: number }): void {
+    const entity = new Barrel(pos);
+    const sprite = new BarrelSprite();
+    this.world.addChild(sprite.gfx);
+    this.barrels.set(entity.state.id, { entity, sprite });
+    sprite.sync(entity);
+  }
+
+  // ── Explosion FX ─────────────────────────────────────────────────────────
+
+  private _showExplodeFx(cx: number, cy: number, radius: number): void {
+    const ring = new Graphics();
+    ring.circle(cx, cy, radius).stroke({ color: 0xf28c28, width: 4 });
+    this.world.addChild(ring);
+    let r = radius;
+    const grow = setInterval(() => {
+      r += 6;
+      ring.clear();
+      ring.circle(cx, cy, r).stroke({ color: 0xff9a3c, width: Math.max(1, 4 - (r - radius) / 6) });
+      ring.alpha -= 0.15;
+      if (ring.alpha <= 0) { clearInterval(grow); ring.destroy(); }
+    }, 40);
+  }
+
+  // ── Enemy collidable snapshot for ProjectileSystem ────────────────────────
+
+  private _buildCollidableEnemies() {
+    return [...this.enemies.values()]
+      .filter(({ entity }) => entity.isAlive)
+      .map(({ entity }) => {
+        const es   = entity.state;
+        const body = ENEMY_BODY[es.type];
+        return {
+          id       : es.id,
+          position : es.position,
+          hp       : es.hp,
+          maxHp    : es.maxHp,
+          hurtTimer: es.hurtTimer,
+          velocityX: es.velocityX,
+          velocityY: es.velocityY,
+          mass     : getEnemyMass(es.type),
+          halfW    : body.w / 2,
+          halfH    : body.h / 2,
+        };
+      });
+  }
+
+  // ── Map rendering ──────────────────────────────────────────────────────────
+
+  private renderMap(): void {
+    const textures = buildMapTextures();
+    const mapCont  = new Container();
+    const { tiles, widthTiles, heightTiles } = this.map;
+
+    for (let row = 0; row < heightTiles; row++) {
+      for (let col = 0; col < widthTiles; col++) {
+        const val = tiles[row][col];
+
+        if (val === 0) {
+          if ((row + col) % 3 === 0) {
+            const s = new Sprite(textures.bg as Texture);
+            s.width = TILE_SIZE; s.height = TILE_SIZE;
+            s.x = col * TILE_SIZE; s.y = row * TILE_SIZE;
+            mapCont.addChild(s);
+          }
+          continue;
+        }
+
+        const above    = row > 0             && tiles[row - 1][col] === 0;
+        const below    = row < heightTiles-1 && tiles[row + 1][col] === 0;
+        const hasLeft  = col > 0             && tiles[row][col - 1] === 1;
+        const hasRight = col < widthTiles-1  && tiles[row][col + 1] === 1;
+
+        let tex: Texture;
+        if (above && !below && hasLeft && hasRight) tex = textures.solidTop as Texture;
+        else if (!hasLeft)                          tex = textures.solidLeft  as Texture;
+        else if (!hasRight)                         tex = textures.solidRight as Texture;
+        else                                        tex = textures.solid      as Texture;
+
+        const s = new Sprite(tex);
+        s.width = TILE_SIZE; s.height = TILE_SIZE;
+        s.x = col * TILE_SIZE; s.y = row * TILE_SIZE;
+        mapCont.addChild(s);
+      }
+    }
+
+    this.world.addChild(mapCont);
+  }
+
+  // ── Enemy spawning ─────────────────────────────────────────────────────────
+
+  private spawnEnemies(): void {
+    const groundY = (this.map.heightTiles - 2) * TILE_SIZE;
+    const spawns: Array<{ type: EnemyType; x: number; y: number }> = [
+      { type: 'grunt',   x: TILE_SIZE * 15, y: groundY },
+      { type: 'brute',   x: TILE_SIZE * 30, y: groundY },
+      { type: 'speeder', x: TILE_SIZE * 50, y: groundY },
+      { type: 'grunt',   x: TILE_SIZE * 60, y: groundY },
+      { type: 'speeder', x: TILE_SIZE * 70, y: groundY },
+    ];
+
+    for (const spawn of spawns) {
+      const enemy = new Enemy(spawn.type);
+      enemy.state.position = { x: spawn.x, y: spawn.y };
+      const anim = new EnemyAnimSprite(enemy);
+      this.world.addChild(anim.sprite);
+      this.enemies.set(enemy.state.id, { entity: enemy, anim });
+    }
   }
 }
