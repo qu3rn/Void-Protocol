@@ -30,6 +30,7 @@ export interface EnemyState extends EntityStats {
   type: EnemyType;
   position: Vec2;
   reward: number;
+  dropChance: number;
   isBoss: boolean;
   velocityX: number;
   velocityY: number;
@@ -104,3 +105,36 @@ export type GameEvent =
   | { type: 'projectile_hit_barrel'; projectileId: string; barrelId: string }
   | { type: 'barrel_explode'; barrelId: string; position: Vec2 }
   | { type: 'enemy_slowed'; enemyId: string; slowMult: number };
+
+// ── Run / Progression ────────────────────────────────────────────────────────
+
+export type GamePhase = 'menu' | 'playing' | 'paused' | 'dead';
+export type Rarity    = 'common' | 'rare' | 'epic';
+
+export interface WeaponMods {
+  damageMultiplier? : number;
+  attackSpeedMult?  : number; // < 1.0 = faster cooldown
+  projectileCount?  : number;
+  aoeRadiusMult?    : number;
+  knockbackMult?    : number;
+}
+
+export interface WeaponConfig {
+  id    : string;
+  label : string;
+  rarity: Rarity;
+  mods  : WeaponMods;
+}
+
+export interface LootDrop {
+  id      : string;
+  position: Vec2;
+  weapon  : WeaponConfig;
+  rarity  : Rarity;
+}
+
+export interface SkillSlotState {
+  id           : string;
+  label        : string;
+  readyFraction: number; // 0 = on cooldown, 1 = ready
+}

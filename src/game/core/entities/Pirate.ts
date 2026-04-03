@@ -28,6 +28,11 @@ import {
   applyJumpHold,
 } from '@game/core/systems/MovementSystem';
 import type { MovableBody } from '@game/core/systems/MovementSystem';
+import { SkillScalingSystem } from '@game/core/systems/SkillScalingSystem';
+import type { WeaponConfig } from '@shared/types';
+
+/** The three base skills in slot order – used when re-equipping with scaled cooldowns. */
+const BASE_SKILLS = [SKILL_CUTLASS, SKILL_POWDER_BARREL, SKILL_CANNON_SHOT] as const;
 
 export class Pirate extends Player {
   /** Set by processInput when the barrel skill fires; null it after consuming. */
@@ -35,19 +40,29 @@ export class Pirate extends Player {
   /** Set by processInput when the cannon skill fires; null it after consuming. */
   pendingShot   : CannonShotResult | null = null;
 
+  readonly skillScaling = new SkillScalingSystem();
+
   constructor() {
     super();
 
     // Override base stats with pirate values
     Object.assign(this.state, PIRATE_CONFIG.initialStats);
 
-    // Equip pirate-specific skills over the base ones
+    // Equip pirate-specific skills
     this.skills.equip(0, SKILL_CUTLASS       as SkillDef<unknown>);
     this.skills.equip(1, SKILL_POWDER_BARREL as SkillDef<unknown>);
     this.skills.equip(2, SKILL_CANNON_SHOT   as SkillDef<unknown>);
   }
 
-  // ── Input ─────────────────────────────────────────────────────────────────
+  // ── Weapon equip ──────────────────────────────────────────────────────────
+
+  equipWeapon(weapon: WeaponConfig | null): void {
+    this.skillScaling.setWeapon(weapon);
+    this.skillScaling.applyToSkillSystem(
+      this.skills,
+      BASE_SKILLS as unknown as [SkillDef<unknown>, SkillDef<unknown>, SkillDef<unknown>],
+    );
+  }
 
   override processInput(input: InputSnapshot, now: number): void {
     const s    = this.state;

@@ -13,6 +13,7 @@ export interface InputSnapshot {
   attack      : boolean;
   skill1      : boolean;
   skill2      : boolean;
+  pause       : boolean;
 }
 
 const JUMP_KEYS    = new Set(['Space', 'KeyW', 'ArrowUp']);
@@ -21,6 +22,7 @@ const RIGHT_KEYS   = new Set(['KeyD', 'ArrowRight']);
 const ATTACK_KEYS  = new Set(['KeyZ']);
 const SKILL1_KEYS  = new Set(['KeyX']);
 const SKILL2_KEYS  = new Set(['KeyC']);
+const PAUSE_KEYS   = new Set(['Escape', 'KeyP']);
 
 export class InputHandler {
   private held   = new Set<string>();
@@ -57,6 +59,7 @@ export class InputHandler {
       attack      : hasAny(ATTACK_KEYS, this.pressed),
       skill1      : hasAny(SKILL1_KEYS, this.pressed),
       skill2      : hasAny(SKILL2_KEYS, this.pressed),
+      pause       : hasAny(PAUSE_KEYS,  this.pressed),
     };
   }
 }
