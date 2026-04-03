@@ -1,18 +1,34 @@
-import { Graphics } from 'pixi.js';
+import { AnimatedSprite } from 'pixi.js';
+import type { Texture } from 'pixi.js';
 import type { Player } from '@game/core/entities/Player';
-import { PLAYER_COLOR } from '@shared/constants';
+import { buildPlayerTextures } from './spriteSheetGenerator';
 
-export function createPlayerSprite(player: Player): Graphics {
-  const g = new Graphics();
-  g.circle(0, 0, 12).fill({ color: PLAYER_COLOR });
+export class PlayerAnimSprite {
+  readonly sprite: AnimatedSprite;
+  private textures: Record<string, Texture[]>;
+  private currentState = '';
 
-  g.x = player.state.position.x;
-  g.y = player.state.position.y;
+  constructor() {
+    this.textures     = buildPlayerTextures();
+    this.sprite       = new AnimatedSprite(this.textures.idle);
+    this.sprite.scale.set(2);
+    this.sprite.anchor.set(0.5, 1); // pivot at feet-centre
+    this.sprite.animationSpeed = 0.12;
+    this.sprite.play();
+  }
 
-  return g;
-}
+  private setState(state: string): void {
+    if (this.currentState === state) return;
+    this.currentState         = state;
+    this.sprite.textures      = this.textures[state] ?? this.textures.idle;
+    this.sprite.currentFrame  = 0;
+    this.sprite.play();
+  }
 
-export function syncPlayerSprite(g: Graphics, player: Player): void {
-  g.x = player.state.position.x;
-  g.y = player.state.position.y;
+  sync(player: Player): void {
+    this.sprite.x       = player.state.position.x;
+    this.sprite.y       = player.state.position.y;
+    this.sprite.scale.x = player.state.facingRight ? 2 : -2;
+    this.setState(player.state.animState);
+  }
 }

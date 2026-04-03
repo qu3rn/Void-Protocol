@@ -9,9 +9,8 @@ export async function createPixiApp(container: HTMLElement): Promise<Application
   await app.init({
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
-    backgroundColor: 0x0a0a0f,
+    backgroundColor: 0x0d0a1f,
     antialias: false,
-    resizeTo: container,
   });
 
   container.appendChild(app.canvas);
