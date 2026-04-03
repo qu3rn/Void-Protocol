@@ -97,7 +97,7 @@ src/
   game/
     core/
       entities/       ← Player, Enemy, Barrel, Pirate
-      systems/        ← PhysicsSystem, MovementSystem, CombatSystem, SkillSystem, InputHandler, EventBus, ProjectileSystem
+      systems/        ← PhysicsSystem, MovementSystem, CombatSystem, SkillSystem, InputHandler, EventBus, ProjectileSystem, RunSystem, SpawnSystem, LootSystem, SkillScalingSystem
       rules/
       generators/     ← mapGenerator (procedural platformer)
       utils/          ← vec2.ts
@@ -105,15 +105,16 @@ src/
       pixi/
       scenes/         ← GameScene
       sprites/        ← PlayerSprite, EnemySprite, BarrelSprite, spriteSheetGenerator
+      GameManager.ts  ← scene lifecycle (startNewGame, pauseGame, resumeGame)
     data/
       enemies/
       upgrades/
-      towers/
+      weapons/        ← weaponConfig (11 weapons, 3 rarities)
       player/
         pirate/       ← pirateConfig, pirateSkills
   ui/
     components/
-    screens/
+    screens/          ← MainMenu, PauseMenu, DeathScreen
     hud/
   shared/
     types/
@@ -184,6 +185,34 @@ Use **arena defense (hybrid)** for MVP:
 - Enemies chase or patrol  
 - Expand later into towers  
 
+## Run System
+
+- `RunSystem.ts` — tracks elapsed time, computes difficulty: `min(6.0, 1.0 + elapsedMs/60000)`
+- HP scales ×difficulty, DMG scales ×√difficulty, SPD +8%/level
+
+## Spawn System
+
+- `SpawnSystem.ts` — dynamic interval `max(500, 3500/difficulty)` ms
+- Weighted type roll: grunt 50, speeder 30, brute 20
+- Alternates spawn side left/right each wave
+
+## Loot / Weapon System
+
+- `LootSystem.ts` — rarity-weighted drop on enemy death (common 60, rare 30, epic 10)
+- Proximity pickup radius 28px → equips weapon on player
+- 11 weapons across 3 rarities in `weaponConfig.ts`
+
+## Skill Scaling System
+
+- `SkillScalingSystem.ts` — weapon mods drive damage/AoE/projectile count/knockback/speed multipliers
+- Re-equips skill cooldowns when weapon changes
+
+## Game Phase
+
+- `GamePhase`: `'menu' | 'playing' | 'paused' | 'dead'`
+- Drives React overlay rendering and GameScene pause guard
+- `GameManager.ts` controls scene lifecycle
+
 ---
 
 # Visual Style & Color Palette
@@ -235,11 +264,22 @@ All sprites are **programmatic pixel art** generated via Canvas API in `spriteSh
 
 # UI
 
+## Screens
+
+- `MainMenu` — title, controls legend, START RUN button
+- `PauseMenu` — Resume / Restart Run (shown over HUD)
+- `DeathScreen` — post-run stats: time, kills, score, difficulty, last weapon
+
 ## HUD
-- health bar 
-- experience bar with small level digit above it
-- gameplay time on middle of the screen
-- corner boss image and wave progess 2 digits
+
+**Top bar:**
+- HP bar (left, 180px, orange at <30%)
+- Timer centered with difficulty multiplier (×1.0)
+- Kills + Score (right)
+
+**Bottom bar:**
+- 3 skill slots (Z / X / C) with cooldown fill animation + orange border when ready
+- Equipped weapon name + rarity color (common gray, rare blue, epic purple)
 
 ---
 
@@ -289,6 +329,7 @@ Never directly manipulate position outside physics.
 
 - `InputHandler.ts` — just-pressed vs held, `flush()` end of frame  
 - A/D = move · Space/W/↑ = jump · Z = attack · X = skill1 · C = skill2  
+- Esc/P = pause  
 
 ---
 
