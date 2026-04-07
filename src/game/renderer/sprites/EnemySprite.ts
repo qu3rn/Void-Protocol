@@ -1,4 +1,4 @@
-import { AnimatedSprite } from 'pixi.js';
+import { AnimatedSprite, Graphics } from 'pixi.js';
 import type { Texture } from 'pixi.js';
 import type { Enemy } from '@game/core/entities/Enemy';
 import type { EnemyType } from '@shared/types';
@@ -24,6 +24,7 @@ export class EnemyAnimSprite {
   readonly sprite: AnimatedSprite;
   private textures: Record<string, Texture[]>;
   private currentState = '';
+  private indicator: Graphics;
 
   constructor(enemy: Enemy) {
     this.textures  = getTextures(enemy.state.type);
@@ -34,6 +35,9 @@ export class EnemyAnimSprite {
     this.sprite.anchor.set(0.5, 1);
     this.sprite.animationSpeed = enemy.state.type === 'speeder' ? 0.18 : 0.1;
     this.sprite.play();
+    // Status effect indicator (drawn above the sprite's head)
+    this.indicator = new Graphics();
+    this.sprite.addChild(this.indicator);
   }
 
   private setState(state: string): void {
@@ -49,5 +53,16 @@ export class EnemyAnimSprite {
     this.sprite.y       = enemy.state.position.y;
     this.sprite.scale.x = Math.abs(this.sprite.scale.x) * (enemy.state.facingRight ? 1 : -1);
     this.setState(enemy.state.animState);
+  }
+
+  syncEffects(enemy: Enemy): void {
+    this.indicator.clear();
+    const slow = enemy.state.activeEffects?.slow;
+    if (slow && slow.expiresAt > Date.now()) {
+      // Teal dot above enemy head. Sprite anchor is (0.5, 1): feet at y=0, head at ~y=-32 (unscaled).
+      // The indicator is a child of sprite, in sprite-local coords (unscaled).
+      const headOffset = -18; // px above feet in local space, adjusted for scaling
+      this.indicator.circle(0, headOffset, 3).fill({ color: 0x22ddcc, alpha: 0.9 });
+    }
   }
 }

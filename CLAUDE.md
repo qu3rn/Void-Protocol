@@ -97,7 +97,7 @@ src/
   game/
     core/
       entities/       ← Player, Enemy, Barrel, Pirate
-      systems/        ← PhysicsSystem, MovementSystem, CombatSystem, SkillSystem, InputHandler, EventBus, ProjectileSystem
+      systems/        ← PhysicsSystem, MovementSystem, CombatSystem, SkillSystem, InputHandler, EventBus, ProjectileSystem, RunSystem, SpawnSystem, LootSystem, SkillScalingSystem
       rules/
       generators/     ← mapGenerator (procedural platformer)
       utils/          ← vec2.ts
@@ -105,15 +105,16 @@ src/
       pixi/
       scenes/         ← GameScene
       sprites/        ← PlayerSprite, EnemySprite, BarrelSprite, spriteSheetGenerator
+      GameManager.ts  ← scene lifecycle (startNewGame, pauseGame, resumeGame)
     data/
       enemies/
       upgrades/
-      towers/
+      weapons/        ← weaponConfig (11 weapons, 3 rarities)
       player/
         pirate/       ← pirateConfig, pirateSkills
   ui/
     components/
-    screens/
+    screens/          ← MainMenu, PauseMenu, DeathScreen
     hud/
   shared/
     types/
@@ -134,6 +135,8 @@ src/
 ## Player
 
 - Acceleration-based horizontal movement + variable-hold jump  
+- Always faces mouse cursor (horizontal flip)  
+- **Basic attack** — left mouse click, 40px reach, 280ms cooldown, fast arc visual  
 - Combat interaction via SkillSystem (3 slots)  
 - Health, knockback, hurt timer  
 - Subclassed per hero (Pirate extends Player)  
@@ -148,6 +151,7 @@ Each enemy defines:
 - Reward value  
 - Drop chance  
 - Boss variant config  
+- `activeEffects: ActiveEffects` — extensible status effect slot (slow supported)  
 
 ## Boss System
 
@@ -183,6 +187,34 @@ Use **arena defense (hybrid)** for MVP:
 - Player moves freely across platformer level  
 - Enemies chase or patrol  
 - Expand later into towers  
+
+## Run System
+
+- `RunSystem.ts` — tracks elapsed time, computes difficulty: `min(6.0, 1.0 + elapsedMs/60000)`
+- HP scales ×difficulty, DMG scales ×√difficulty, SPD +8%/level
+
+## Spawn System
+
+- `SpawnSystem.ts` — dynamic interval `max(500, 3500/difficulty)` ms
+- Weighted type roll: grunt 50, speeder 30, brute 20
+- Alternates spawn side left/right each wave
+
+## Loot / Weapon System
+
+- `LootSystem.ts` — rarity-weighted drop on enemy death (common 60, rare 30, epic 10)
+- Proximity pickup radius 28px → equips weapon on player
+- 11 weapons across 3 rarities in `weaponConfig.ts`
+
+## Skill Scaling System
+
+- `SkillScalingSystem.ts` — weapon mods drive damage/AoE/projectile count/knockback/speed multipliers
+- Re-equips skill cooldowns when weapon changes
+
+## Game Phase
+
+- `GamePhase`: `'menu' | 'playing' | 'paused' | 'dead'`
+- Drives React overlay rendering and GameScene pause guard
+- `GameManager.ts` controls scene lifecycle
 
 ---
 
@@ -221,9 +253,11 @@ All sprites are **programmatic pixel art** generated via Canvas API in `spriteSh
 
 ## Effects
 
-- Melee arc (orange, setTimeout cleanup)  
+- Basic attack arc (orange, 100ms, thin)  
+- Cutlass slash arc (orange, 180ms, wider)  
 - Double-blink red on hurt  
 - Explosion ring (animated grow + fade)  
+- Slow indicator: teal dot above enemy head when slowed  
 
 ## Tiles
 
@@ -235,11 +269,22 @@ All sprites are **programmatic pixel art** generated via Canvas API in `spriteSh
 
 # UI
 
+## Screens
+
+- `MainMenu` — title, controls legend, START RUN button
+- `PauseMenu` — Resume / Restart Run (shown over HUD)
+- `DeathScreen` — post-run stats: time, kills, score, difficulty, last weapon
+
 ## HUD
-- health bar 
-- experience bar with small level digit above it
-- gameplay time on middle of the screen
-- corner boss image and wave progess 2 digits
+
+**Top bar:**
+- HP bar (left, 180px, orange at <30%)
+- Timer centered with difficulty multiplier (×1.0)
+- Kills + Score (right)
+
+**Bottom bar:**
+- 3 skill slots (Z / X / C) with cooldown fill animation + orange border when ready
+- Equipped weapon name + rarity color (common gray, rare blue, epic purple)
 
 ---
 
@@ -287,8 +332,11 @@ Never directly manipulate position outside physics.
 
 ## Input
 
-- `InputHandler.ts` — just-pressed vs held, `flush()` end of frame  
-- A/D = move · Space/W/↑ = jump · Z = attack · X = skill1 · C = skill2  
+- `InputHandler.ts` — just-pressed vs held, `flush()` end of frame; tracks mouse position and left click  
+- A/D = move · Space/W/↑ = jump · Z = Cutlass Slash · X = skill1 · C = skill2  
+- Left mouse click = basic attack  
+- Mouse position → player facing direction each frame  
+- Esc/P = pause  
 
 ---
 
@@ -306,19 +354,30 @@ Never directly manipulate position outside physics.
 
 - Pirate (`Pirate.ts` extends `Player`)
 
+## Pirate Basic Attack
+
+- Left click — short melee in facing direction, 40px reach, 280ms cooldown  
+- Uses `Pirate.performBasicAttack(now)`, independent of SkillSystem  
+
 ## Pirate Skills
 
 | Slot | Key | Skill | Cooldown |
 |------|-----|-------|----------|
-| 0 | Z | Cutlass Slash | 400ms |
+| 0 | Z | Cutlass Slash | 900ms |
 | 1 | X | Powder Barrel | 4000ms |
 | 2 | C | Cannon Shot | 1200ms |
 
 ## Pirate Skills Behavior
 
-- **Cutlass Slash** — wide arc melee, returns `MeleeResult` hitbox  
+- **Cutlass Slash** — large directional arc (72px reach), applies 2s slow to all hit enemies  
 - **Powder Barrel** — deploy slow-zone barrel ahead; explodes on cannon hit; damages nearby enemies  
 - **Cannon Shot** — fires cannonball projectile; detonates barrels on contact  
+
+## Status Effects
+
+- `ActiveEffects` interface on `EnemyState` — extensible for future effects  
+- `slow` — `{ multiplier: 0.38, expiresAt: number }` applied per frame to `velocityX`; expires automatically  
+- Slowed enemies display a teal dot indicator above their head (`EnemyAnimSprite.syncEffects`)  
 
 ---
 

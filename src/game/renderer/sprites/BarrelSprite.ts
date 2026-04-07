@@ -5,8 +5,8 @@
 import { Graphics } from 'pixi.js';
 import type { Barrel } from '@game/core/entities/Barrel';
 
-const W = 12;  // px
-const H = 14;  // px
+const W = 22;  // px
+const H = 24;  // px
 
 export class BarrelSprite {
   readonly gfx: Graphics;

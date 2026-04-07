@@ -28,12 +28,24 @@ import {
   applyJumpHold,
 } from '@game/core/systems/MovementSystem';
 import type { MovableBody } from '@game/core/systems/MovementSystem';
+import { SkillScalingSystem } from '@game/core/systems/SkillScalingSystem';
+import type { WeaponConfig } from '@shared/types';
+import { BASIC_ATTACK_REACH, BASIC_ATTACK_COOLDOWN_MS, PLAYER_BODY_W, PLAYER_BODY_H } from '@shared/constants';
+
+/** The three base skills in slot order – used when re-equipping with scaled cooldowns. */
+const BASE_SKILLS = [SKILL_CUTLASS, SKILL_POWDER_BARREL, SKILL_CANNON_SHOT] as const;
 
 export class Pirate extends Player {
+  /** Set by processInput when the cutlass slash fires; null it after consuming. */
+  pendingCutlass: MeleeResult      | null = null;
   /** Set by processInput when the barrel skill fires; null it after consuming. */
   pendingBarrel : BarrelDropResult | null = null;
   /** Set by processInput when the cannon skill fires; null it after consuming. */
   pendingShot   : CannonShotResult | null = null;
+
+  readonly skillScaling = new SkillScalingSystem();
+
+  private lastBasicAttackTime = 0;
 
   constructor() {
     super();
@@ -41,18 +53,26 @@ export class Pirate extends Player {
     // Override base stats with pirate values
     Object.assign(this.state, PIRATE_CONFIG.initialStats);
 
-    // Equip pirate-specific skills over the base ones
+    // Equip pirate-specific skills
     this.skills.equip(0, SKILL_CUTLASS       as SkillDef<unknown>);
     this.skills.equip(1, SKILL_POWDER_BARREL as SkillDef<unknown>);
     this.skills.equip(2, SKILL_CANNON_SHOT   as SkillDef<unknown>);
   }
 
-  // ── Input ─────────────────────────────────────────────────────────────────
+  // ── Weapon equip ──────────────────────────────────────────────────────────
+
+  equipWeapon(weapon: WeaponConfig | null): void {
+    this.skillScaling.setWeapon(weapon);
+    this.skillScaling.applyToSkillSystem(
+      this.skills,
+      BASE_SKILLS as unknown as [SkillDef<unknown>, SkillDef<unknown>, SkillDef<unknown>],
+    );
+  }
 
   override processInput(input: InputSnapshot, now: number): void {
     const s    = this.state;
     const dirX = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-    if (dirX !== 0) s.facingRight = dirX > 0;
+    // facingRight is set each frame from mouse position in GameScene — do not override here
 
     // Horizontal movement
     const body: MovableBody = {
@@ -92,7 +112,10 @@ export class Pirate extends Player {
 
     if (input.attack) {
       const res = this.skills.use<MeleeResult>(0, now, ctx, mutator);
-      if (res) s.lastAttackTime = now;
+      if (res) {
+        s.lastAttackTime  = now;
+        this.pendingCutlass = res;
+      }
     }
 
     if (input.skill1) {
@@ -104,5 +127,18 @@ export class Pirate extends Player {
       const res = this.skills.use<CannonShotResult>(2, now, ctx, mutator);
       if (res) this.pendingShot = res;
     }
+  }
+
+  performBasicAttack(now: number): MeleeResult | null {
+    if (now - this.lastBasicAttackTime < BASIC_ATTACK_COOLDOWN_MS) return null;
+    this.lastBasicAttackTime = now;
+    const s      = this.state;
+    const facing = s.facingRight ? 1 : -1;
+    const halfW  = BASIC_ATTACK_REACH;
+    const halfH  = PLAYER_BODY_H * 0.6;
+    const hitBoxCX = s.position.x + facing * (PLAYER_BODY_W / 2 + halfW);
+    const hitBoxCY = s.position.y - PLAYER_BODY_H / 2;
+    s.lastAttackTime = now;
+    return { hitBoxCX, hitBoxCY, halfW, halfH };
   }
 }
