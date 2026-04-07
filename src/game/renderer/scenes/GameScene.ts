@@ -18,7 +18,7 @@ import { RunSystem } from '@game/core/systems/RunSystem';
 import { SpawnSystem } from '@game/core/systems/SpawnSystem';
 import { LootSystem } from '@game/core/systems/LootSystem';
 import { getEnemyConfig } from '@game/data/enemies/enemyConfig';
-import { TILE_SIZE, GAME_WIDTH, PLAYER_BODY_W, PLAYER_BODY_H } from '@shared/constants';
+import { TILE_SIZE, GAME_WIDTH, PLAYER_BODY_W, PLAYER_BODY_H, SLOW_MULT, SLOW_DURATION_MS, CUTLASS_SLASH_REACH } from '@shared/constants';
 import { useGameStore } from '@store/useGameStore';
 import type { EnemyType, ProjectileState, LootDrop } from '@shared/types';
 
@@ -63,6 +63,8 @@ export class GameScene {
   private lootSystem  : LootSystem;
   private onDeath     : () => void;
   private cameraX     = 0;
+  private mouseWorldX = 0;
+  private crosshair   : Graphics;
   private lastContactDamage = 0;
   private _isDead     = false;
   private readonly _tickFn: () => void;
@@ -72,6 +74,11 @@ export class GameScene {
     this.onDeath = onDeath;
     this.world = new Container();
     app.stage.addChild(this.world);
+
+    // Crosshair overlay (screen-space, above everything)
+    this.crosshair = this._buildCrosshair();
+    app.stage.addChild(this.crosshair);
+    app.canvas.style.cursor = 'none';
 
     this.map = generateMap();
     this.renderMap();
@@ -168,6 +175,15 @@ export class GameScene {
     // ── Player: input + physics ──────────────────────────────────────────────
     const ps = this.player.state;
 
+    // Convert screen mouse → canvas-relative coords, then world coords
+    const _rect        = this.app.canvas.getBoundingClientRect();
+    const canvasMouseX = input.mouseScreenX - _rect.left;
+    const canvasMouseY = input.mouseScreenY - _rect.top;
+    this.mouseWorldX   = canvasMouseX + this.cameraX;
+    this.player.state.facingRight = this.mouseWorldX >= this.player.state.position.x;
+    this.crosshair.x   = canvasMouseX;
+    this.crosshair.y   = canvasMouseY;
+
     this.player.processInput(input, now);
 
     // Consume pirate skill spawn requests
@@ -202,25 +218,65 @@ export class GameScene {
     ps.velocityX  = pbody.vx; ps.velocityY  = pbody.vy;
     ps.isOnGround = pbody.isOnGround;
 
-    // ── Attack: melee bash ───────────────────────────────────────────────────
-    if (input.attack) {
-      const bash = this.player.tryBash(now);
-      if (bash) {
-        const scaling = this.player.skillScaling;
+    // ── Skill 0: Cutlass Slash ────────────────────────────────────────────────
+    if (this.player.pendingCutlass) {
+      const slash   = this.player.pendingCutlass;
+      this.player.pendingCutlass = null;
+      const scaling = this.player.skillScaling;
+      const atk = {
+        origin    : ps.position,
+        facing    : ps.facingRight ? 1 : -1,
+        halfW     : slash.halfW,
+        halfH     : slash.halfH,
+        offsetX   : Math.abs(slash.hitBoxCX - ps.position.x),
+        damage    : ps.damage * scaling.getDamageMult() * 1.5,
+        knockbackX: 8.0 * scaling.getKnockbackMult(),
+        knockbackY: 5.0,
+      };
+      for (const { entity, anim } of this.enemies.values()) {
+        if (!entity.isAlive) continue;
+        const es     = entity.state;
+        const centre = { x: es.position.x, y: es.position.y - ENEMY_BODY[es.type].h / 2 };
+        if (isInMeleeRange(centre, atk)) {
+          const target = {
+            position : es.position,
+            velocityX: es.velocityX,
+            velocityY: es.velocityY,
+            hp       : es.hp,
+            maxHp    : es.maxHp,
+            hurtTimer: es.hurtTimer,
+            mass     : getEnemyMass(es.type),
+          };
+          applyHit(ps.position, target, atk);
+          es.velocityX = target.velocityX;
+          es.velocityY = target.velocityY;
+          es.hp        = target.hp;
+          es.hurtTimer = target.hurtTimer;
+          doubleBlink(anim.sprite, 400);
+          es.activeEffects.slow = { multiplier: SLOW_MULT, expiresAt: now + SLOW_DURATION_MS };
+        }
+      }
+      this.showCutlassFx(ps.position.x, ps.position.y, ps.facingRight);
+    }
+
+    // ── Basic attack: left mouse click ────────────────────────────────────────
+    if (input.leftClick) {
+      const basicHit = this.player.performBasicAttack(now);
+      if (basicHit) {
         const atk = {
           origin    : ps.position,
           facing    : ps.facingRight ? 1 : -1,
-          halfW     : bash.halfW,
-          halfH     : bash.halfH,
-          offsetX   : Math.abs(bash.hitBoxCX - ps.position.x),
-          damage    : ps.damage * scaling.getDamageMult(),
-          knockbackX: 5.5 * scaling.getKnockbackMult(),
-          knockbackY: 3.5,
+          halfW     : basicHit.halfW,
+          halfH     : basicHit.halfH,
+          offsetX   : Math.abs(basicHit.hitBoxCX - ps.position.x),
+          damage    : ps.damage * this.player.skillScaling.getDamageMult(),
+          knockbackX: 3.5 * this.player.skillScaling.getKnockbackMult(),
+          knockbackY: 2.5,
         };
         for (const { entity, anim } of this.enemies.values()) {
           if (!entity.isAlive) continue;
-          const es      = entity.state;
-          const centre  = { x: es.position.x, y: es.position.y - ENEMY_BODY[es.type].h / 2 };
+          const es     = entity.state;
+          const centre = { x: es.position.x, y: es.position.y - ENEMY_BODY[es.type].h / 2 };
           if (isInMeleeRange(centre, atk)) {
             const target = {
               position : es.position,
@@ -239,7 +295,8 @@ export class GameScene {
             doubleBlink(anim.sprite, 400);
           }
         }
-        this.showSlashFx(bash.hitBoxCX, bash.hitBoxCY, bash.halfW);
+        // Small, fast arc visual (shorter duration)
+        this.showBasicAttackFx(basicHit.hitBoxCX, basicHit.hitBoxCY, basicHit.halfW * 0.7);
       }
     }
 
@@ -325,8 +382,19 @@ export class GameScene {
         doubleBlink(this.playerAnim.sprite, 400);
       }
 
+      // Apply slow effect to velocity
+      const slow = es.activeEffects.slow;
+      if (slow) {
+        if (now >= slow.expiresAt) {
+          delete es.activeEffects.slow;
+        } else {
+          es.velocityX *= slow.multiplier;
+        }
+      }
+
       entity.updateAnimState();
       anim.sync(entity);
+      anim.syncEffects(entity);
     }
 
     // ── Barrel slow aura ──────────────────────────────────────────────────────
@@ -396,23 +464,108 @@ export class GameScene {
 
   destroy(): void {
     this.app.ticker.remove(this._tickFn);
+    this.crosshair.destroy();
     this.world.destroy({ children: true });
     this.eventBus.clear();
     this.projSystem.clear();
     this.lootSystem.clear();
   }
 
-  // ── Slash FX ──────────────────────────────────────────────────────────────
+  // ── Crosshair ─────────────────────────────────────────────────────────────
 
-  private showSlashFx(cx: number, cy: number, halfW: number): void {
-    const dir  = this.player.state.facingRight ? 1 : -1;
-    const arc  = new Graphics();
-    const sa   = dir > 0 ? -Math.PI * 0.6 : Math.PI * 0.4;
-    const ea   = dir > 0 ?  Math.PI * 0.1  : Math.PI * 1.6;
+  private _buildCrosshair(): Graphics {
+    const g      = new Graphics();
+    const gap    = 6;   // px gap around centre
+    const len    = 12;  // line length
+    const outerR = 20;  // guide circle radius
+    const w      = 1.5;
+    const col    = 0xffffff;
+
+    // 4 cross arms with centre gap
+    g.rect(-w / 2, -(gap + len), w, len).fill({ color: col, alpha: 0.9 }); // top
+    g.rect(-w / 2, gap,          w, len).fill({ color: col, alpha: 0.9 }); // bottom
+    g.rect(-(gap + len), -w / 2, len, w).fill({ color: col, alpha: 0.9 }); // left
+    g.rect(gap,          -w / 2, len, w).fill({ color: col, alpha: 0.9 }); // right
+
+    // Faint outer guide circle
+    g.circle(0, 0, outerR).stroke({ color: col, width: 1, alpha: 0.35 });
+
+    // Corner accent dots on the guide circle (NE / NW / SE / SW)
+    for (let i = 0; i < 4; i++) {
+      const a = Math.PI / 4 + i * (Math.PI / 2);
+      g.circle(Math.cos(a) * outerR, Math.sin(a) * outerR, 1.5)
+       .fill({ color: col, alpha: 0.65 });
+    }
+
+    // Centre dot — orange accent
+    g.circle(0, 0, 2).fill({ color: 0xff8833 });
+
+    return g;
+  }
+
+  private showCutlassFx(px: number, py: number, facingRight: boolean): void {
+    const dir        = facingRight ? 1 : -1;
+    const radius     = CUTLASS_SLASH_REACH;
+    const startA     = dir > 0 ? -Math.PI * 0.75 : Math.PI * 0.25;
+    const totalSweep = dir > 0 ?  Math.PI * 1.0  : Math.PI * 1.0;
+
+    const cont  = new Container();
+    const glow  = new Graphics();
+    const blade = new Graphics();
+    cont.addChild(glow);
+    cont.addChild(blade);
+    this.world.addChild(cont);
+
+    const STEPS   = 8;
+    const STEP_MS = 22;
+    let step = 1;
+
+    const draw = () => {
+      const progress = step / STEPS;
+      const curEnd   = startA + totalSweep * progress;
+      const fade     = 1 - progress * 0.2;
+
+      glow.clear();
+      glow.arc(px, py, radius + 10, startA, curEnd)
+          .stroke({ color: 0xffffff, width: 12, alpha: 0.15 * fade });
+
+      blade.clear();
+      blade.arc(px, py, radius, startA, curEnd)
+           .stroke({ color: 0xffffff, width: 3, alpha: 0.92 * fade });
+
+      // Leading-edge tip flash
+      const tipX = px + Math.cos(curEnd) * radius;
+      const tipY = py + Math.sin(curEnd) * radius;
+      blade.circle(tipX, tipY, 3.5).fill({ color: 0xffffff, alpha: 0.75 * fade });
+    };
+
+    draw();
+    const sweep = setInterval(() => {
+      step++;
+      if (step <= STEPS) {
+        draw();
+      } else {
+        clearInterval(sweep);
+        // Fade-out phase
+        let alpha = 1.0;
+        const fadeFn = setInterval(() => {
+          alpha -= 0.28;
+          cont.alpha = Math.max(0, alpha);
+          if (alpha <= 0) { clearInterval(fadeFn); cont.destroy(); }
+        }, 25);
+      }
+    }, STEP_MS);
+  }
+
+  private showBasicAttackFx(cx: number, cy: number, halfW: number): void {
+    const dir = this.player.state.facingRight ? 1 : -1;
+    const arc = new Graphics();
+    const sa  = dir > 0 ? -Math.PI * 0.3 : Math.PI * 0.7;
+    const ea  = dir > 0 ?  Math.PI * 0.1  : Math.PI * 1.3;
     arc.arc(cx, cy, halfW, sa, ea);
-    arc.stroke({ color: 0xff9a3c, width: 3 });
+    arc.stroke({ color: 0xff8833, width: 2, alpha: 0.8 });
     this.world.addChild(arc);
-    setTimeout(() => arc.destroy(), 180);
+    setTimeout(() => arc.destroy(), 100);
   }
 
   // ── Barrel spawn ──────────────────────────────────────────────────────────

@@ -135,6 +135,8 @@ src/
 ## Player
 
 - Acceleration-based horizontal movement + variable-hold jump  
+- Always faces mouse cursor (horizontal flip)  
+- **Basic attack** — left mouse click, 40px reach, 280ms cooldown, fast arc visual  
 - Combat interaction via SkillSystem (3 slots)  
 - Health, knockback, hurt timer  
 - Subclassed per hero (Pirate extends Player)  
@@ -149,6 +151,7 @@ Each enemy defines:
 - Reward value  
 - Drop chance  
 - Boss variant config  
+- `activeEffects: ActiveEffects` — extensible status effect slot (slow supported)  
 
 ## Boss System
 
@@ -250,9 +253,11 @@ All sprites are **programmatic pixel art** generated via Canvas API in `spriteSh
 
 ## Effects
 
-- Melee arc (orange, setTimeout cleanup)  
+- Basic attack arc (orange, 100ms, thin)  
+- Cutlass slash arc (orange, 180ms, wider)  
 - Double-blink red on hurt  
 - Explosion ring (animated grow + fade)  
+- Slow indicator: teal dot above enemy head when slowed  
 
 ## Tiles
 
@@ -327,8 +332,10 @@ Never directly manipulate position outside physics.
 
 ## Input
 
-- `InputHandler.ts` — just-pressed vs held, `flush()` end of frame  
-- A/D = move · Space/W/↑ = jump · Z = attack · X = skill1 · C = skill2  
+- `InputHandler.ts` — just-pressed vs held, `flush()` end of frame; tracks mouse position and left click  
+- A/D = move · Space/W/↑ = jump · Z = Cutlass Slash · X = skill1 · C = skill2  
+- Left mouse click = basic attack  
+- Mouse position → player facing direction each frame  
 - Esc/P = pause  
 
 ---
@@ -347,19 +354,30 @@ Never directly manipulate position outside physics.
 
 - Pirate (`Pirate.ts` extends `Player`)
 
+## Pirate Basic Attack
+
+- Left click — short melee in facing direction, 40px reach, 280ms cooldown  
+- Uses `Pirate.performBasicAttack(now)`, independent of SkillSystem  
+
 ## Pirate Skills
 
 | Slot | Key | Skill | Cooldown |
 |------|-----|-------|----------|
-| 0 | Z | Cutlass Slash | 400ms |
+| 0 | Z | Cutlass Slash | 900ms |
 | 1 | X | Powder Barrel | 4000ms |
 | 2 | C | Cannon Shot | 1200ms |
 
 ## Pirate Skills Behavior
 
-- **Cutlass Slash** — wide arc melee, returns `MeleeResult` hitbox  
+- **Cutlass Slash** — large directional arc (72px reach), applies 2s slow to all hit enemies  
 - **Powder Barrel** — deploy slow-zone barrel ahead; explodes on cannon hit; damages nearby enemies  
 - **Cannon Shot** — fires cannonball projectile; detonates barrels on contact  
+
+## Status Effects
+
+- `ActiveEffects` interface on `EnemyState` — extensible for future effects  
+- `slow` — `{ multiplier: 0.38, expiresAt: number }` applied per frame to `velocityX`; expires automatically  
+- Slowed enemies display a teal dot indicator above their head (`EnemyAnimSprite.syncEffects`)  
 
 ---
 

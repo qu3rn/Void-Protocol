@@ -39,6 +39,11 @@ export interface EnemyState extends EntityStats {
   animState: EnemyAnimState;
   hurtTimer: number;
   patrolDir: 1 | -1;
+  activeEffects: ActiveEffects;
+}
+
+export interface ActiveEffects {
+  slow?: { multiplier: number; expiresAt: number };
 }
 
 export interface EnemyConfig {

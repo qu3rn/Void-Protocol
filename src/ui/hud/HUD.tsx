@@ -110,12 +110,12 @@ export function HUD() {
           display   : 'flex',
           alignItems: 'center',
           gap       : 16,
-          background: 'rgba(13,10,31,0.85)',
+          background: 'rgba(13,10,31,0.0)',
           borderTop : '1px solid #281c50',
         }}
       >
         {/* Skill slots */}
-        {(['Z', 'X', 'C'] as const).map((key, i) => {
+        {(['Q', 'E', 'R'] as const).map((key, i) => {
           const slot = skillSlots[i];
           const frac = slot?.readyFraction ?? 0;
           return (
@@ -165,7 +165,7 @@ export function HUD() {
                   {key}
                 </span>
               </div>
-              <span style={{ fontSize: 9, color: '#4755a0', maxWidth: 50, textAlign: 'center', lineHeight: 1.2 }}>
+              <span style={{ fontSize: 9, color: '#4755a0', maxWidth: 50, textAlign: 'center', lineHeight: 1.2, height: '2.4em', display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
                 {slot?.label ?? '—'}
               </span>
             </div>

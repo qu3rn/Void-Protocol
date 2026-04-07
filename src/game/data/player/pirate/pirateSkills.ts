@@ -9,7 +9,12 @@
  */
 import type { SkillDef } from '@game/core/systems/SkillSystem';
 import type { Vec2 } from '@shared/types';
-import { PLAYER_BODY_W, PLAYER_BODY_H, SLASH_COOLDOWN_MS } from '@shared/constants';
+import {
+  PLAYER_BODY_W,
+  PLAYER_BODY_H,
+  CUTLASS_SLASH_REACH,
+  CUTLASS_SLASH_COOLDOWN_MS,
+} from '@shared/constants';
 import type { MeleeResult } from '@game/data/player/skills';
 
 // ── Re-export for external convenience ────────────────────────────────────────
@@ -28,16 +33,16 @@ export interface BarrelDropResult {
 }
 
 // ── Slot 0 – Cutlass Slash ────────────────────────────────────────────────────
-/** Wider, slightly stronger melee than the generic Bash. */
+/** Large, slowing slash. Longer cooldown than the basic attack. */
 export const SKILL_CUTLASS: SkillDef<MeleeResult> = {
   id        : 'cutlass',
-  label     : 'Cutlass',
-  cooldownMs: SLASH_COOLDOWN_MS,
+  label     : 'Cutlass Slash',
+  cooldownMs: CUTLASS_SLASH_COOLDOWN_MS,
   trigger   : 'attack',
   execute(ctx) {
     const facing   = ctx.facingRight ? 1 : -1;
-    const halfW    = (PLAYER_BODY_W / 2 + 36) / 2;           // 36 px reach
-    const halfH    = PLAYER_BODY_H * 0.65;
+    const halfW    = CUTLASS_SLASH_REACH;
+    const halfH    = PLAYER_BODY_H * 0.75;
     const hitBoxCX = ctx.position.x + facing * (PLAYER_BODY_W / 2 + halfW);
     const hitBoxCY = ctx.position.y - PLAYER_BODY_H / 2;
     return { hitBoxCX, hitBoxCY, halfW, halfH };

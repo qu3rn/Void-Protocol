@@ -14,19 +14,25 @@ export interface InputSnapshot {
   skill1      : boolean;
   skill2      : boolean;
   pause       : boolean;
+  leftClick    : boolean;   // left mouse button just-pressed this frame
+  mouseScreenX : number;    // current mouse X in screen/canvas pixels
+  mouseScreenY : number;    // current mouse Y in screen/canvas pixels
 }
 
 const JUMP_KEYS    = new Set(['Space', 'KeyW', 'ArrowUp']);
 const LEFT_KEYS    = new Set(['KeyA', 'ArrowLeft']);
 const RIGHT_KEYS   = new Set(['KeyD', 'ArrowRight']);
-const ATTACK_KEYS  = new Set(['KeyZ']);
-const SKILL1_KEYS  = new Set(['KeyX']);
-const SKILL2_KEYS  = new Set(['KeyC']);
+const ATTACK_KEYS  = new Set(['KeyQ']);
+const SKILL1_KEYS  = new Set(['KeyE']);
+const SKILL2_KEYS  = new Set(['KeyR']);
 const PAUSE_KEYS   = new Set(['Escape', 'KeyP']);
 
 export class InputHandler {
   private held   = new Set<string>();
   private pressed= new Set<string>(); // cleared each frame
+  private mouseX = 0;
+  private mouseY = 0;
+  private mouseClicked = false;  // just-pressed left click
 
   constructor() {
     window.addEventListener('keydown', (e) => {
@@ -40,11 +46,20 @@ export class InputHandler {
     window.addEventListener('keyup', (e) => {
       this.held.delete(e.code);
     });
+    window.addEventListener('mousemove', (e) => {
+      this.mouseX = e.clientX;
+      this.mouseY = e.clientY;
+    });
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) this.mouseClicked = true;
+    });
+    window.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
   /** Call at the END of each frame to clear just-pressed flags. */
   flush(): void {
     this.pressed.clear();
+    this.mouseClicked = false;
   }
 
   snapshot(): InputSnapshot {
@@ -60,6 +75,9 @@ export class InputHandler {
       skill1      : hasAny(SKILL1_KEYS, this.pressed),
       skill2      : hasAny(SKILL2_KEYS, this.pressed),
       pause       : hasAny(PAUSE_KEYS,  this.pressed),
+      leftClick    : this.mouseClicked,
+      mouseScreenX : this.mouseX,
+      mouseScreenY : this.mouseY,
     };
   }
 }

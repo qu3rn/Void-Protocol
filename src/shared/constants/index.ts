@@ -19,6 +19,13 @@ export const PLAYER_SPEED = 3.5;
 export const SLASH_RADIUS = 60;
 export const SLASH_COOLDOWN_MS = 400;
 
+export const BASIC_ATTACK_REACH = 40;        // halfW for basic attack hitbox
+export const BASIC_ATTACK_COOLDOWN_MS = 280; // fast, repeatable
+export const CUTLASS_SLASH_REACH = 72;       // halfW for the big slowing slash
+export const CUTLASS_SLASH_COOLDOWN_MS = 900;
+export const SLOW_MULT = 0.38;               // velocity multiplier when slowed (lower = slower)
+export const SLOW_DURATION_MS = 2000;
+
 export const MAP_BG_COLOR = 0x0d0a1f;
 export const TILE_COLOR_DARK = 0x1a1040;
 export const TILE_COLOR_LIGHT = 0x1e1550;

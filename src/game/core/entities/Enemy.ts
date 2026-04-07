@@ -41,6 +41,7 @@ export class Enemy {
       animState  : 'idle',
       hurtTimer  : 0,
       patrolDir  : 1,
+      activeEffects: {},
     };
   }
 
