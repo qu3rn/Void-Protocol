@@ -17,7 +17,7 @@ export default defineConfig({
   },
   build: {
     lib: {
-      entry: resolve(__dirname, 'src/index.ts'),
+      entry: resolve(__dirname, 'src/main.tsx'),
       name: 'GameKit',
       formats: ['es'],
       fileName: 'index',
