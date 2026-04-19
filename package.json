@@ -9,10 +9,16 @@
   "files": [
     "dist"
   ],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
     "dev": "vite",
     "tsc": "tsc --emitDeclarationOnly",
-    "build": "tsc --emitDeclarationOnly && vite build",
+    "build": "tsc -p tsconfig.build.json && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
