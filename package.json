@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": false,
   "type": "module",
-  "main": "./dist/main.js",
-  "module": "./dist/main.js",
-  "types": "./dist/main.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
@@ -18,7 +18,7 @@
   "scripts": {
     "dev": "vite",
     "tsc": "tsc --emitDeclarationOnly",
-    "build": "tsc -p tsconfig.build.json && vite build",
+    "build": "vite build && tsc -p tsconfig.build.json",
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",

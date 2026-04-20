@@ -8,7 +8,7 @@ import { DeathScreen } from '@ui/screens/DeathScreen';
 import { createPixiApp } from '@game/renderer/pixi/PixiApp';
 
 /** Root UI component — renders the correct overlay for each game phase. */
-export function Game()
+export function GameUI()
 {
   const phase = useGameStore((s) => s.phase);
   return (
@@ -21,7 +21,7 @@ export function Game()
   );
 }
 
-async function bootstrap()
+async function Game()
 {
   const gameContainer = document.getElementById('game-container');
   if (!gameContainer) throw new Error('Missing #game-container');
@@ -32,7 +32,7 @@ async function bootstrap()
   // Always mount React first so store + phase are available
   createRoot(uiRoot).render(
     <StrictMode>
-      <Game />
+      <GameUI />
     </StrictMode>,
   );
 
@@ -40,4 +40,4 @@ async function bootstrap()
   await createPixiApp(gameContainer);
 }
 
-bootstrap().catch(console.error);
+Game().catch(console.error);
