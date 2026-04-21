@@ -1,5 +1,5 @@
 /**
- * Game — self-contained component.
+ * Game - self-contained component.
  *
  * Drop this into any React project and the full Void-Protocol game renders
  * inside a 1280×720 box. No host HTML IDs required.
@@ -8,9 +8,8 @@
  *   import { Game } from 'void-protocol';
  *   <Game />
  */
-import { useEffect, useRef } from 'react';
+import { usePixiApp } from '@ui/hooks/usePixiApp';
 import { useGameStore } from '@store/useGameStore';
-import { createPixiApp, destroyPixiApp } from '@game/renderer/pixi/PixiApp';
 import { HUD } from '@ui/hud/HUD';
 import { MainMenu } from '@ui/screens/MainMenu';
 import { PauseMenu } from '@ui/screens/PauseMenu';
@@ -30,22 +29,7 @@ function GameUI() {
 }
 
 export function Game() {
-  const canvasRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-
-    let alive = true;
-    createPixiApp(el).then(() => {
-      if (!alive) destroyPixiApp();
-    });
-
-    return () => {
-      alive = false;
-      destroyPixiApp();
-    };
-  }, []);
+  const canvasRef = usePixiApp();
 
   return (
     <div
