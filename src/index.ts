@@ -1,1 +1,1 @@
-export { Game } from './main';
+export { Game } from './Game';
