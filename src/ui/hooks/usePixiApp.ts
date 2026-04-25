@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPixiApp, destroyPixiApp } from '@game/renderer/pixi/PixiApp';
 
-export function usePixiApp()
+export function usePixiApp(width?: number, height?: number)
 {
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -11,8 +11,8 @@ export function usePixiApp()
     if (!el) return;
 
     let alive = true;
-    
-    createPixiApp(el).then(() =>
+
+    createPixiApp(el, width, height).then(() =>
     {
       if (!alive)
       {

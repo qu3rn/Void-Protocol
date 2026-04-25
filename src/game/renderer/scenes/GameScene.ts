@@ -18,7 +18,7 @@ import { RunSystem } from '@game/core/systems/RunSystem';
 import { SpawnSystem } from '@game/core/systems/SpawnSystem';
 import { LootSystem } from '@game/core/systems/LootSystem';
 import { getEnemyConfig } from '@game/data/enemies/enemyConfig';
-import { TILE_SIZE, GAME_WIDTH, PLAYER_BODY_W, PLAYER_BODY_H, SLOW_MULT, SLOW_DURATION_MS, CUTLASS_SLASH_REACH } from '@shared/constants';
+import { TILE_SIZE, PLAYER_BODY_W, PLAYER_BODY_H, SLOW_MULT, SLOW_DURATION_MS, CUTLASS_SLASH_REACH } from '@shared/constants';
 import { useGameStore } from '@store/useGameStore';
 import type { EnemyType, ProjectileState, LootDrop } from '@shared/types';
 
@@ -441,7 +441,8 @@ export class GameScene {
 
     // ── Camera ────────────────────────────────────────────────────────────────
     const mapPx = this.map.widthTiles * TILE_SIZE;
-    this.cameraX   = Math.max(0, Math.min(ps.position.x - GAME_WIDTH / 2, mapPx - GAME_WIDTH));
+    const vw     = this.app.screen.width;
+    this.cameraX   = Math.max(0, Math.min(ps.position.x - vw / 2, mapPx - vw));
     this.world.x   = -this.cameraX;
 
     // ── HUD push ─────────────────────────────────────────────────────────────

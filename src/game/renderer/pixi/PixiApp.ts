@@ -3,13 +3,16 @@ import { GAME_WIDTH, GAME_HEIGHT } from '@shared/constants';
 
 let app: Application | null = null;
 
-export async function createPixiApp(container: HTMLElement): Promise<Application>
-{
+export async function createPixiApp(
+  container: HTMLElement,
+  width  = GAME_WIDTH,
+  height = GAME_HEIGHT,
+): Promise<Application> {
   const instance = new Application();
 
   await instance.init({
-    width: GAME_WIDTH,
-    height: GAME_HEIGHT,
+    width,
+    height,
     backgroundColor: 0x0d0a1f,
     antialias: false,
   });
