@@ -16,6 +16,11 @@ import { PauseMenu } from '@ui/screens/PauseMenu';
 import { DeathScreen } from '@ui/screens/DeathScreen';
 import { GAME_WIDTH, GAME_HEIGHT } from '@shared/constants';
 
+export interface GameProps {
+  width?  : number;
+  height? : number;
+}
+
 function GameUI() {
   const phase = useGameStore((s) => s.phase);
   return (
@@ -28,15 +33,15 @@ function GameUI() {
   );
 }
 
-export function Game() {
-  const canvasRef = usePixiApp();
+export function Game({ width = GAME_WIDTH, height = GAME_HEIGHT }: GameProps = {}) {
+  const canvasRef = usePixiApp(width, height);
 
   return (
     <div
       style={{
         position : 'relative',
-        width    : GAME_WIDTH,
-        height   : GAME_HEIGHT,
+        width,
+        height,
         overflow : 'hidden',
         background: '#0d0a1f',
         cursor   : 'none',
